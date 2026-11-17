@@ -4,6 +4,51 @@
 
 ---
 
+## 🧪 My Lab Run — [@alepertile28](https://github.com/alepertile28)
+
+> This repository is my hands-on run of the **DevOps + AIOps Series** by [Vishakha Sadhwani](https://github.com/vishakhasadhwani/devops-ai-playbook).
+> I deployed, operated and troubleshot everything below **in my own AWS account (us-east-1)**, then tore it all down to keep costs at zero.
+> The original course README continues after this section.
+
+**Status:** ✅ Lab completed — infrastructure destroyed after practice (Nov 2026).
+
+### What I built
+
+| Area | What I did |
+|---|---|
+| **Infrastructure as Code** | Terraform: VPC with 3 public subnets, EKS 1.34 cluster + managed node group, 7 ECR repositories, IAM roles + IRSA (EBS CSI driver), Argo CD and kube-prometheus-stack installed via Helm |
+| **CI** | GitHub Actions pipeline that builds 7 microservice images, pushes them to ECR and commits the new image tags back to the GitOps manifests |
+| **CD / GitOps** | Argo CD `Application` syncing the `gitops/` Kustomize stack from this repository to the cluster |
+| **Data** | PostgreSQL StatefulSet on EBS (gp2) + a Kubernetes Job that restores the schema and seed data |
+| **Observability** | Prometheus + Grafana (ServiceMonitor scraping the services), Fluent Bit shipping pod logs to CloudWatch Logs |
+| **AIOps** | Lambda tools (logs, metrics, cluster health) for an SRE assistant agent on Amazon Bedrock |
+
+### Issues I hit and how I solved them
+
+| Symptom | Root cause | Fix |
+|---|---|---|
+| CI failed: `SignatureDoesNotMatch` | Access key ID and secret in GitHub Secrets were not a matching pair | Re-set both secrets from the same IAM access key |
+| Pods stuck in `InvalidImageName` | Manifests still had the literal `<AWS_ACCOUNT_ID>` placeholder, and the CI `sed` only rewrites lines that already contain the real account ID | Set the account ID in the manifests once; CI then only bumps the tag |
+| Pods `Pending: Too many pods` | Single `m7i-flex.large` node is limited to 29 pods by the VPC CNI (one IP per pod) | Scaled broken ReplicaSets to zero; production fix: more nodes or VPC CNI prefix delegation |
+| Frontend loaded but showed no products | Create React App bakes `REACT_APP_API_URL` in at **build** time; the image defaulted to `http://localhost:3001/api` | Port-forwarded the gateway to `localhost:3001` for the lab; proper fix: build-time arg + same-origin `/api` routing |
+| Fluent Bit: `NoCredentialProviders` / IMDS `401` | IMDSv2 hop limit of 1 blocks pods on the pod network from reaching the node's IAM role | `hostNetwork=true` for the lab; production fix: IRSA service-account role |
+| Bedrock `CreateAgent` → `AccessDenied` | Classic Bedrock Agents is in maintenance mode for accounts without prior usage | Verified Qwen3-32B tool calling on the Converse API and started migrating the agent to **Amazon Bedrock AgentCore** |
+| `terraform destroy` hygiene | Load balancers and EBS volumes created by Kubernetes, and IAM policies attached by hand, are invisible to Terraform | Delete K8s `LoadBalancer` services and PVCs and detach manual policies **before** destroying |
+
+### Cost control
+
+- Infrastructure only ran during practice sessions, with a full `terraform destroy` afterwards
+- After teardown, scanned every AWS region for idle billable resources (EC2, EBS, Elastic IPs, NAT, load balancers, RDS, KMS, Secrets Manager…)
+- AWS Budget alert at $5/month
+
+### Lab-only trade-offs (and what I'd do in production)
+
+- `gitops/secrets.yml` holds demo database credentials in plain text → production: External Secrets Operator / Sealed Secrets / AWS Secrets Manager
+- Image references include the AWS account ID (an identifier, not a credential) to follow the course's GitOps flow
+- Prometheus was briefly exposed through a public load balancer so Lambda could query it → production: private networking (VPC Lambda, internal load balancer) or Amazon Managed Prometheus
+
+---
+
 ## Welcome
 
 Hey everyone!
